@@ -7,7 +7,9 @@ const cors = require('cors');
 const app = express();
 
 // Allow all origins with CORS
-app.use(cors());
+app.use(cors({
+    origin: 'https://artgraduates-frontend.onrender.com'
+}));
 
 // Middleware
 app.use(express.json()); // For parsing JSON
