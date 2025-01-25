@@ -6,24 +6,24 @@ const cors = require('cors');
 
 const app = express();
 
-// Enable CORS for the frontend domain
+// Allow only frontend-origin requests with CORS
 app.use(cors({
-    origin: 'https://artgraduates-frontend.onrender.com', // Replace with your frontend URL
+    origin: 'https://artgraduates-frontend.onrender.com', // Replace with your frontend's Render URL
     methods: ['GET', 'POST'],
     allowedHeaders: ['Content-Type']
 }));
 
-// Middleware for JSON parsing and serving static files
-app.use(express.json()); // For parsing JSON in requests
-app.use(express.static('public')); // Serve static files if needed
+// Middleware to parse JSON requests and serve static files
+app.use(express.json());
+app.use(express.static('public'));
 
-// Initialize SQLite Database
-const db = new sqlite3.Database(':memory:'); // Use a file-based DB for production
+// Initialize SQLite database
+const db = new sqlite3.Database(':memory:'); // Use a file DB for production
 
-// Create the `records` table
+// Create table for records
 db.serialize(() => {
     db.run(`
-        CREATE TABLE records (
+        CREATE TABLE IF NOT EXISTS records (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT,
             country TEXT,
@@ -37,46 +37,43 @@ db.serialize(() => {
 // Configure Multer for file uploads
 const upload = multer({ storage: multer.memoryStorage() });
 
-// Routes
-
 // Route: Form submission
 app.post('/submit', upload.single('image'), async (req, res) => {
     try {
         const { name, country, website } = req.body;
 
-        // Validate required fields
+        // Validate fields
         if (!name || !country || !website || !req.file) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'All fields (name, country, website, and image) are required.' 
+            return res.status(400).json({
+                success: false,
+                message: 'All fields (name, country, website, and image) are required.'
             });
         }
 
-        // Resize the uploaded image using Sharp
+        // Resize and optimize image
         const optimizedImage = await sharp(req.file.buffer)
-            .resize({ height: 300 }) // Resize to height of 300px
+            .resize({ height: 300 }) // Resize height to 300px
             .jpeg({ quality: 80 }) // Optimize JPEG quality
             .toBuffer();
 
-        // Convert the optimized image to Base64
         const imageBase64 = `data:image/jpeg;base64,${optimizedImage.toString('base64')}`;
 
-        // Insert the form data into the database
+        // Insert record into database
         db.run(
             `INSERT INTO records (name, country, image, website) VALUES (?, ?, ?, ?)`,
             [name, country, imageBase64, website],
             function (err) {
                 if (err) {
-                    console.error('Error inserting record into the database:', err.message);
+                    console.error('Error inserting record into database:', err.message);
                     return res.status(500).json({ success: false, error: 'Database error' });
                 }
 
-                // Return success response with the new record's ID
+                // Send success response with the new record's ID
                 res.status(200).json({ success: true, id: this.lastID });
             }
         );
     } catch (err) {
-        console.error('Error processing form submission:', err.message);
+        console.error('Error in /submit route:', err.message);
         res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
@@ -94,8 +91,9 @@ app.get('/records', (req, res) => {
     });
 });
 
-// Start the server
+// Start server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`Server running on http://localhost:${PORT}`);
 });
+
