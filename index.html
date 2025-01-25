@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Art Graduates Submission</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        form {
+            display: flex;
+            flex-direction: column;
+        }
+        label {
+            margin: 10px 0 5px;
+        }
+        input, select, button {
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        .records {
+            margin-top: 30px;
+        }
+        .record {
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .record img {
+            max-height: 50px;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Submit Your Artwork</h1>
+        <form id="submissionForm" enctype="multipart/form-data">
+            <label for="name">Name:</label>
+            <input type="text" id="name" name="name" required>
+
+            <label for="country">Country:</label>
+            <select id="country" name="country" required>
+                <!-- Countries list populated by JavaScript -->
+            </select>
+
+            <label for="image">Upload Image:</label>
+            <input type="file" id="image" name="image" accept="image/*" required>
+
+            <label for="website">Website:</label>
+            <input type="url" id="website" name="website" placeholder="https://example.com" required>
+
+            <button type="submit">Submit</button>
+        </form>
+
+        <h2>Submitted Records</h2>
+        <div class="records" id="records">
+            <!-- Records will be dynamically populated -->
+        </div>
+    </div>
+
+    <script>
+        // Populate country dropdown
+        fetch('https://restcountries.com/v3.1/all')
+            .then(response => response.json())
+            .then(data => {
+                const countrySelect = document.getElementById('country');
+                data.sort((a, b) => a.name.common.localeCompare(b.name.common));
+                data.forEach(country => {
+                    const option = document.createElement('option');
+                    option.value = country.name.common;
+                    option.textContent = country.name.common;
+                    countrySelect.appendChild(option);
+                });
+            });
+
+        // Form submission handler
+        const form = document.getElementById('submissionForm');
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(form);
+
+            // Image size optimization using a Canvas (for resizing)
+            const file = formData.get('image');
+            if (file.size > 1024 * 1024) {
+                alert('File size exceeds 1MB, resizing...');
+            }
+            const img = await new Promise((resolve) => {
+                const img = document.createElement('img');
+                const reader = new FileReader();
+                reader.onload = () => {
+                    img.src = reader.result;
+                    img.onload = () => resolve(img);
+                };
+                reader.readAsDataURL(file);
+            });
+
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const aspectRatio = img.width / img.height;
+            canvas.height = 300;
+            canvas.width = aspectRatio * 300;
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            const optimizedImage = await new Promise((resolve) => {
+                canvas.toBlob((blob) => resolve(new File([blob], file.name, { type: file.type })));
+            });
+            formData.set('image', optimizedImage);
+
+            // Send form data to the backend
+            fetch('/submit', {
+                method: 'POST',
+                body: formData,
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Submission successful!');
+                        form.reset();
+                        fetchRecords(); // Reload records
+                    }
+                })
+                .catch(err => console.error(err));
+        });
+
+        // Fetch and display records
+        function fetchRecords() {
+            fetch('/records')
+                .then(response => response.json())
+                .then(data => {
+                    const recordsContainer = document.getElementById('records');
+                    recordsContainer.innerHTML = '';
+                    data.forEach(record => {
+                        const recordDiv = document.createElement('div');
+                        recordDiv.classList.add('record');
+                        recordDiv.innerHTML = `
+                            <img src="${record.image}" alt="Image">
+                            <div>
+                                <p><strong>${record.name}</strong> (${record.country})</p>
+                                <a href="${record.website}" target="_blank">${record.website}</a>
+                            </div>
+                        `;
+                        recordsContainer.appendChild(recordDiv);
+                    });
+                });
+        }
+        fetchRecords();
+    </script>
+</body>
+</html>
+
