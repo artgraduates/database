@@ -128,7 +128,7 @@
             formData.set('image', optimizedImage);
 
             // Send form data to the backend
-            fetch('/submit', {
+            fetch('https://artgraduates-backend.onrender.com/submit', {
                 method: 'POST',
                 body: formData,
             })
@@ -145,7 +145,7 @@
 
         // Fetch and display records
         function fetchRecords() {
-            fetch('/records')
+            fetch('https://artgraduates-backend.onrender.com/records')
                 .then(response => response.json())
                 .then(data => {
                     const recordsContainer = document.getElementById('records');
