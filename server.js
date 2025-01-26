@@ -125,6 +125,18 @@ app.get('/records', (req, res) => {
     });
 });
 
+// Route: Fetch list of unique countries
+app.get('/countries', (req, res) => {
+    db.all(`SELECT DISTINCT country FROM records`, [], (err, rows) => {
+        if (err) {
+            console.error('Error fetching countries:', err.message);
+            return res.status(500).json({ error: 'Database error' });
+        }
+        const countries = rows.map(row => row.country);
+        res.status(200).json(countries);
+    });
+});
+
 // Start server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
