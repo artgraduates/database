@@ -38,11 +38,19 @@ db.serialize(() => {
 // Configure multer for memory storage
 const upload = multer({ storage: multer.memoryStorage() });
 
+// Debugging Middleware
+app.use((req, res, next) => {
+    console.log(`Incoming Request: ${req.method} ${req.url}`);
+    next();
+});
+
 app.post('/submit', upload.fields([{ name: 'image' }, { name: 'personalImage' }]), async (req, res) => {
     try {
-        const { name, country, website, description } = req.body;
+        const { name, country, website, description, captcha } = req.body;
 
-        if (!req.body.captcha || !name || !country || !website || !req.files['image']) {
+        // Check if all required fields are present
+        if (!captcha || !name || !country || !website || !req.files['image']) {
+            console.error('Missing required fields:', { name, country, website, captcha, image: req.files['image'] });
             return res.status(400).json({ success: false, message: 'All required fields must be filled out!' });
         }
 
