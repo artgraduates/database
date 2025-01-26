@@ -9,9 +9,9 @@ const app = express();
 
 // Enable CORS
 app.use(cors({
-    origin: 'https://artgraduates-frontend.onrender.com', // Allow requests from your frontend domain
-    methods: ['GET', 'POST'], // Allowed HTTP methods
-    allowedHeaders: ['Content-Type'], // Allowed headers
+    origin: 'https://artgraduates-frontend.onrender.com',
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
 app.use(express.json({ limit: '5mb' }));
