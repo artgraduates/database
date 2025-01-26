@@ -61,9 +61,7 @@
             <input type="text" id="name" name="name" required>
 
             <label for="country">Country:</label>
-            <select id="country" name="country" required>
-                <!-- Countries list populated by JavaScript -->
-            </select>
+            <select id="country" name="country" required></select>
 
             <label for="image">Upload Image:</label>
             <input type="file" id="image" name="image" accept="image/*" required>
@@ -71,13 +69,15 @@
             <label for="website">Website:</label>
             <input type="url" id="website" name="website" placeholder="https://example.com" required>
 
+            <label>
+                <input type="checkbox" id="captcha" required>
+                I am human
+            </label>
+
             <button type="submit">Submit</button>
         </form>
-
         <h2>Submitted Records</h2>
-        <div class="records" id="records">
-            <!-- Records will be dynamically populated -->
-        </div>
+        <div class="records" id="records"></div>
     </div>
 
     <script>
@@ -96,36 +96,39 @@
             });
 
         // Form submission handler
-        const form = document.getElementById('submissionForm');
-        form.addEventListener('submit', async (e) => {
+        document.getElementById('submissionForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+            const form = e.target;
             const formData = new FormData(form);
 
-            // Image size optimization using a Canvas (for resizing)
+            // Include CAPTCHA value
+            const isCaptchaChecked = document.getElementById('captcha').checked;
+            formData.append('captcha', isCaptchaChecked ? 'on' : '');
+
+            // Optimize image size if larger than 1MB
             const file = formData.get('image');
             if (file.size > 1024 * 1024) {
-                alert('File size exceeds 1MB, resizing...');
-            }
-            const img = await new Promise((resolve) => {
-                const img = document.createElement('img');
-                const reader = new FileReader();
-                reader.onload = () => {
-                    img.src = reader.result;
-                    img.onload = () => resolve(img);
-                };
-                reader.readAsDataURL(file);
-            });
+                const img = await new Promise((resolve) => {
+                    const img = document.createElement('img');
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        img.src = reader.result;
+                        img.onload = () => resolve(img);
+                    };
+                    reader.readAsDataURL(file);
+                });
 
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            const aspectRatio = img.width / img.height;
-            canvas.height = 300;
-            canvas.width = aspectRatio * 300;
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            const optimizedImage = await new Promise((resolve) => {
-                canvas.toBlob((blob) => resolve(new File([blob], file.name, { type: file.type })));
-            });
-            formData.set('image', optimizedImage);
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                const aspectRatio = img.width / img.height;
+                canvas.height = 300;
+                canvas.width = aspectRatio * 300;
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                const optimizedImage = await new Promise((resolve) => {
+                    canvas.toBlob((blob) => resolve(new File([blob], file.name, { type: file.type })));
+                });
+                formData.set('image', optimizedImage);
+            }
 
             // Send form data to the backend
             fetch('https://artgraduates-backend.onrender.com/submit', {
@@ -138,6 +141,8 @@
                         alert('Submission successful!');
                         form.reset();
                         fetchRecords(); // Reload records
+                    } else {
+                        alert(`Error: ${data.message}`);
                     }
                 })
                 .catch(err => console.error(err));
