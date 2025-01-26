@@ -121,6 +121,10 @@
                 const response = await fetch('https://artgraduates-backend.onrender.com/countries');
                 const countries = await response.json();
 
+                if (!Array.isArray(countries) || countries.length === 0) {
+                    throw new Error('No countries found.');
+                }
+
                 // Populate both the form and filter dropdowns
                 const countrySelect = document.getElementById('country');
                 const filterCountrySelect = document.getElementById('filterCountry');
@@ -140,6 +144,7 @@
                 });
             } catch (err) {
                 console.error('Error fetching countries:', err);
+                document.getElementById('country').innerHTML = '<option value="">Failed to load countries</option>';
             }
         }
 
