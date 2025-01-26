@@ -15,6 +15,7 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Initialize SQLite database
 const db = new sqlite3.Database(path.join(__dirname, 'artgraduates.db'));
 
 db.serialize(() => {
@@ -32,44 +33,78 @@ db.serialize(() => {
     `);
 });
 
+// Configure multer for memory storage
 const upload = multer({ storage: multer.memoryStorage() });
 
 app.post('/submit', upload.fields([{ name: 'image' }, { name: 'personalImage' }]), async (req, res) => {
     try {
         const { name, country, website, description } = req.body;
+
         if (!req.body.captcha || !name || !country || !website || !req.files['image']) {
-            return res.status(400).json({ success: false, message: 'All fields are required!' });
+            return res.status(400).json({ success: false, message: 'All required fields must be filled out!' });
         }
-        const artworkImage = await sharp(req.files['image'][0].buffer).resize({ height: 900 }).jpeg({ quality: 80 }).toBuffer();
-        let personalImage = null;
+
+        // Process artwork image
+        const artworkImage = await sharp(req.files['image'][0].buffer)
+            .resize({ height: 900 }) // Resize to height 900px while maintaining aspect ratio
+            .jpeg({ quality: 80 }) // Compress the image
+            .toBuffer();
+
+        const artworkImageBase64 = `data:image/jpeg;base64,${artworkImage.toString('base64')}`;
+
+        // Process personal image (if provided)
+        let personalImageBase64 = null;
         if (req.files['personalImage']) {
-            personalImage = await sharp(req.files['personalImage'][0].buffer).resize({ height: 900 }).jpeg({ quality: 80 }).toBuffer();
+            const personalImage = await sharp(req.files['personalImage'][0].buffer)
+                .resize({ height: 900 })
+                .jpeg({ quality: 80 })
+                .toBuffer();
+            personalImageBase64 = `data:image/jpeg;base64,${personalImage.toString('base64')}`;
         }
-        db.run(`INSERT INTO records (name, country, image, personal_image, website, description) VALUES (?, ?, ?, ?, ?, ?)`,
-            [name, country, artworkImage.toString('base64'), personalImage ? personalImage.toString('base64') : null, website, description],
+
+        // Insert the record into the database
+        db.run(
+            `INSERT INTO records (name, country, image, personal_image, website, description) VALUES (?, ?, ?, ?, ?, ?)`,
+            [name, country, artworkImageBase64, personalImageBase64, website, description],
             function (err) {
                 if (err) return res.status(500).json({ success: false, error: 'Database error' });
                 res.json({ success: true, id: this.lastID });
-            });
+            }
+        );
     } catch (err) {
-        res.status(500).json({ success: false, error: 'Server error' });
+        console.error(err);
+        res.status(500).json({ success: false, error: 'Server error occurred during image processing.' });
     }
 });
 
 app.get('/records', (req, res) => {
     const { sort = 'newest', country = '' } = req.query;
+
     let query = `SELECT * FROM records`;
     const params = [];
+
     if (country) {
         query += ` WHERE country LIKE ?`;
         params.push(`%${country}%`);
     }
-    query += sort === 'newest' ? ' ORDER BY created_at DESC' : sort === 'oldest' ? ' ORDER BY created_at ASC' : '';
+
+    query += sort === 'newest'
+        ? ' ORDER BY created_at DESC'
+        : sort === 'oldest'
+        ? ' ORDER BY created_at ASC'
+        : sort === 'az'
+        ? ' ORDER BY name COLLATE NOCASE ASC'
+        : sort === 'za'
+        ? ' ORDER BY name COLLATE NOCASE DESC'
+        : '';
+
     db.all(query, params, (err, rows) => {
-        if (err) return res.status(500).json({ error: 'DB Error' });
+        if (err) return res.status(500).json({ success: false, error: 'Database query error' });
         res.json(rows);
     });
 });
 
-app.listen(3000, () => console.log('Server running on port 3000'));
+// Start the server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
