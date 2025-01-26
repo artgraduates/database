@@ -9,11 +9,13 @@ const app = express();
 
 // Enable CORS
 app.use(cors({
-    origin: 'https://artgraduates-frontend.onrender.com',
+    origin: 'https://artgraduates-frontend.onrender.com', // Allow requests from your frontend domain
+    methods: ['GET', 'POST'], // Allowed HTTP methods
+    allowedHeaders: ['Content-Type'], // Allowed headers
 }));
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '5mb' }));
+app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 
 // Initialize SQLite database
 const db = new sqlite3.Database(path.join(__dirname, 'artgraduates.db'));
@@ -45,21 +47,31 @@ app.post('/submit', upload.fields([{ name: 'image' }, { name: 'personalImage' }]
         }
 
         // Process artwork image
-        const artworkImage = await sharp(req.files['image'][0].buffer)
-            .resize({ height: 900 }) // Resize to height 900px while maintaining aspect ratio
-            .jpeg({ quality: 80 }) // Compress the image
-            .toBuffer();
-
-        const artworkImageBase64 = `data:image/jpeg;base64,${artworkImage.toString('base64')}`;
+        let artworkImageBase64;
+        try {
+            const artworkImage = await sharp(req.files['image'][0].buffer)
+                .resize({ height: 900 })
+                .jpeg({ quality: 80 })
+                .toBuffer();
+            artworkImageBase64 = `data:image/jpeg;base64,${artworkImage.toString('base64')}`;
+        } catch (err) {
+            console.error('Error processing artwork image:', err);
+            return res.status(500).json({ success: false, message: 'Error processing artwork image.' });
+        }
 
         // Process personal image (if provided)
         let personalImageBase64 = null;
         if (req.files['personalImage']) {
-            const personalImage = await sharp(req.files['personalImage'][0].buffer)
-                .resize({ height: 900 })
-                .jpeg({ quality: 80 })
-                .toBuffer();
-            personalImageBase64 = `data:image/jpeg;base64,${personalImage.toString('base64')}`;
+            try {
+                const personalImage = await sharp(req.files['personalImage'][0].buffer)
+                    .resize({ height: 900 })
+                    .jpeg({ quality: 80 })
+                    .toBuffer();
+                personalImageBase64 = `data:image/jpeg;base64,${personalImage.toString('base64')}`;
+            } catch (err) {
+                console.error('Error processing personal image:', err);
+                return res.status(500).json({ success: false, message: 'Error processing personal image.' });
+            }
         }
 
         // Insert the record into the database
@@ -67,13 +79,16 @@ app.post('/submit', upload.fields([{ name: 'image' }, { name: 'personalImage' }]
             `INSERT INTO records (name, country, image, personal_image, website, description) VALUES (?, ?, ?, ?, ?, ?)`,
             [name, country, artworkImageBase64, personalImageBase64, website, description],
             function (err) {
-                if (err) return res.status(500).json({ success: false, error: 'Database error' });
+                if (err) {
+                    console.error('Database error:', err);
+                    return res.status(500).json({ success: false, message: 'Database error.' });
+                }
                 res.json({ success: true, id: this.lastID });
             }
         );
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ success: false, error: 'Server error occurred during image processing.' });
+        console.error('Unexpected server error:', err);
+        res.status(500).json({ success: false, message: 'Unexpected server error.' });
     }
 });
 
@@ -99,7 +114,7 @@ app.get('/records', (req, res) => {
         : '';
 
     db.all(query, params, (err, rows) => {
-        if (err) return res.status(500).json({ success: false, error: 'Database query error' });
+        if (err) return res.status(500).json({ success: false, message: 'Database query error' });
         res.json(rows);
     });
 });
