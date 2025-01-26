@@ -137,16 +137,20 @@
                     method: 'POST',
                     body: formData,
                 });
-                const data = await response.json();
-                if (data.success) {
-                    alert('Submission successful!');
-                    e.target.reset();
-                    fetchRecords();
-                } else {
-                    alert(`Error: ${data.message}`);
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    alert(`Error: ${errorData.message}`);
+                    return;
                 }
+
+                const data = await response.json();
+                alert('Submission successful!');
+                e.target.reset();
+                fetchRecords();
             } catch (err) {
                 console.error(err);
+                alert('An error occurred. Please try again.');
             }
         });
 
