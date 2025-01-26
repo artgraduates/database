@@ -6,21 +6,22 @@ const cors = require('cors');
 
 const app = express();
 
-// Allow only frontend-origin requests with CORS
+// Enable CORS
 app.use(cors({
-    origin: 'https://artgraduates-frontend.onrender.com', // Replace with your frontend's Render URL
+    origin: 'https://artgraduates-frontend.onrender.com', // Frontend URL
     methods: ['GET', 'POST'],
     allowedHeaders: ['Content-Type']
 }));
 
-// Middleware to parse JSON requests and serve static files
+// Middleware
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
 
-// Initialize SQLite database
-const db = new sqlite3.Database(':memory:'); // Use a file DB for production
+// Initialize SQLite Database
+const db = new sqlite3.Database(':memory:');
 
-// Create table for records
+// Create the `records` table
 db.serialize(() => {
     db.run(`
         CREATE TABLE IF NOT EXISTS records (
@@ -41,9 +42,8 @@ const upload = multer({ storage: multer.memoryStorage() });
 app.post('/submit', upload.single('image'), async (req, res) => {
     try {
         const { name, country, website } = req.body;
-        const isHuman = req.body.captcha === 'on'; // Checkbox value
+        const isHuman = req.body.captcha === 'on';
 
-        // Validate fields and CAPTCHA
         if (!name || !country || !website || !req.file || !isHuman) {
             return res.status(400).json({
                 success: false,
@@ -51,7 +51,6 @@ app.post('/submit', upload.single('image'), async (req, res) => {
             });
         }
 
-        // Resize and optimize image
         const optimizedImage = await sharp(req.file.buffer)
             .resize({ height: 300 })
             .jpeg({ quality: 80 })
@@ -59,7 +58,6 @@ app.post('/submit', upload.single('image'), async (req, res) => {
 
         const imageBase64 = `data:image/jpeg;base64,${optimizedImage.toString('base64')}`;
 
-        // Insert record into database
         db.run(
             `INSERT INTO records (name, country, image, website) VALUES (?, ?, ?, ?)`,
             [name, country, imageBase64, website],
@@ -68,8 +66,6 @@ app.post('/submit', upload.single('image'), async (req, res) => {
                     console.error('Database error:', err.message);
                     return res.status(500).json({ success: false, error: 'Database error' });
                 }
-
-                // Return success response
                 res.status(200).json({ success: true, id: this.lastID });
             }
         );
@@ -86,8 +82,6 @@ app.get('/records', (req, res) => {
             console.error('Error fetching records:', err.message);
             return res.status(500).json({ success: false, error: 'Database error' });
         }
-
-        // Return all records as JSON
         res.status(200).json(rows);
     });
 });
@@ -95,6 +89,6 @@ app.get('/records', (req, res) => {
 // Start server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Server running on port ${PORT}`);
 });
 
