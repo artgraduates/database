@@ -115,8 +115,6 @@
         document.getElementById('submissionForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const formData = new FormData(e.target);
-            const isCaptchaChecked = document.getElementById('captcha').checked;
-            formData.append('captcha', isCaptchaChecked ? 'on' : '');
 
             try {
                 const response = await fetch('https://artgraduates-backend.onrender.com/submit', {
@@ -130,7 +128,6 @@
                     return;
                 }
 
-                const data = await response.json();
                 alert('Submission successful!');
                 e.target.reset();
                 fetchRecords();
@@ -141,14 +138,8 @@
         });
 
         async function fetchRecords() {
-            const filterCountry = document.getElementById('filterCountry').value;
-            const sortOrder = document.getElementById('sortOrder').value;
-            const url = new URL('https://artgraduates-backend.onrender.com/records');
-            if (filterCountry) url.searchParams.append('country', filterCountry);
-            if (sortOrder) url.searchParams.append('sort', sortOrder);
-
             try {
-                const response = await fetch(url);
+                const response = await fetch('https://artgraduates-backend.onrender.com/records');
                 const data = await response.json();
                 displayRecords(data);
             } catch (err) {
@@ -174,9 +165,6 @@
                 recordsContainer.appendChild(recordDiv);
             });
         }
-
-        document.getElementById('sortOrder').addEventListener('change', fetchRecords);
-        document.getElementById('filterCountry').addEventListener('input', fetchRecords);
 
         fetchRecords();
     </script>
