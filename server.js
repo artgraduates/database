@@ -25,10 +25,10 @@ db.serialize(() => {
     db.run(`
         CREATE TABLE IF NOT EXISTS records (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,
-            country TEXT,
-            image TEXT,
-            website TEXT,
+            name TEXT NOT NULL,
+            country TEXT NOT NULL,
+            image TEXT NOT NULL,
+            website TEXT NOT NULL,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     `);
@@ -41,19 +41,20 @@ const upload = multer({ storage: multer.memoryStorage() });
 app.post('/submit', upload.single('image'), async (req, res) => {
     try {
         const { name, country, website } = req.body;
+        const isHuman = req.body.captcha === 'on'; // Checkbox value
 
-        // Validate fields
-        if (!name || !country || !website || !req.file) {
+        // Validate fields and CAPTCHA
+        if (!name || !country || !website || !req.file || !isHuman) {
             return res.status(400).json({
                 success: false,
-                message: 'All fields (name, country, website, and image) are required.'
+                message: 'All fields (name, country, website, image, and CAPTCHA) are required.'
             });
         }
 
         // Resize and optimize image
         const optimizedImage = await sharp(req.file.buffer)
-            .resize({ height: 300 }) // Resize height to 300px
-            .jpeg({ quality: 80 }) // Optimize JPEG quality
+            .resize({ height: 300 })
+            .jpeg({ quality: 80 })
             .toBuffer();
 
         const imageBase64 = `data:image/jpeg;base64,${optimizedImage.toString('base64')}`;
@@ -64,11 +65,11 @@ app.post('/submit', upload.single('image'), async (req, res) => {
             [name, country, imageBase64, website],
             function (err) {
                 if (err) {
-                    console.error('Error inserting record into database:', err.message);
+                    console.error('Database error:', err.message);
                     return res.status(500).json({ success: false, error: 'Database error' });
                 }
 
-                // Send success response with the new record's ID
+                // Return success response
                 res.status(200).json({ success: true, id: this.lastID });
             }
         );
