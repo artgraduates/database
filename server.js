@@ -1,133 +1,118 @@
 const express = require('express');
 const multer = require('multer');
 const sharp = require('sharp');
-const sqlite3 = require('sqlite3').verbose();
+const { Pool } = require('pg');
 const cors = require('cors');
-const path = require('path');
 
+// Initialize Express app
 const app = express();
 
 // Enable CORS
 app.use(cors({
-    origin: 'https://artgraduates-frontend.onrender.com',
+    origin: 'https://artgraduates-frontend.onrender.com', // Replace with your frontend URL
     methods: ['GET', 'POST'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
-app.use(express.json({ limit: '5mb' }));
-app.use(express.urlencoded({ extended: true, limit: '5mb' }));
+// Middleware for JSON parsing and serving static files
+app.use(express.json());
+app.use(express.static('public'));
 
-// Initialize SQLite database
-const db = new sqlite3.Database(path.join(__dirname, 'artgraduates.db'));
-
-db.serialize(() => {
-    db.run(`
-        CREATE TABLE IF NOT EXISTS records (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            country TEXT NOT NULL,
-            image TEXT NOT NULL,
-            personal_image TEXT,
-            website TEXT NOT NULL,
-            description TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    `);
+// PostgreSQL Connection Configuration
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL || "postgresql://artgraduates_postgress_user:EsbeFmM3ieDRIiEbWRsmqMLMs5iYi1iz@dpg-cud91fdsvqrc73a10pl0-a.oregon-postgres.render.com/artgraduates_postgress",
+    ssl: { rejectUnauthorized: false }, // Required for Render PostgreSQL
 });
 
-// Configure multer for memory storage
+// Multer configuration for file uploads
 const upload = multer({ storage: multer.memoryStorage() });
 
-// Debugging Middleware
-app.use((req, res, next) => {
-    console.log(`Incoming Request: ${req.method} ${req.url}`);
-    next();
+// Initialize Database (Create Table)
+pool.query(`
+    CREATE TABLE IF NOT EXISTS submissions (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        country TEXT NOT NULL,
+        artwork_image TEXT NOT NULL,
+        personal_image TEXT,
+        website TEXT NOT NULL,
+        description TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+`, (err) => {
+    if (err) console.error('Error initializing database:', err.message);
 });
 
-app.post('/submit', upload.fields([{ name: 'image' }, { name: 'personalImage' }]), async (req, res) => {
+// API Route to Handle Form Submissions
+app.post('/submit', upload.fields([{ name: 'artworkImage' }, { name: 'personalImage' }]), async (req, res) => {
+    const { name, country, website, description } = req.body;
+
+    if (!name || !country || !website || !req.files.artworkImage) {
+        return res.status(400).json({ success: false, message: 'All required fields must be filled!' });
+    }
+
     try {
-        const { name, country, website, description, captcha } = req.body;
+        // Optimize artwork image
+        const artworkImageBuffer = await sharp(req.files.artworkImage[0].buffer)
+            .resize({ height: 900 }) // Resizing to a larger display size
+            .jpeg({ quality: 80 })
+            .toBuffer();
+        const artworkImage = `data:image/jpeg;base64,${artworkImageBuffer.toString('base64')}`;
 
-        // Check if all required fields are present
-        if (!captcha || !name || !country || !website || !req.files['image']) {
-            console.error('Missing required fields:', { name, country, website, captcha, image: req.files['image'] });
-            return res.status(400).json({ success: false, message: 'All required fields must be filled out!' });
-        }
-
-        // Process artwork image
-        let artworkImageBase64;
-        try {
-            const artworkImage = await sharp(req.files['image'][0].buffer)
-                .resize({ height: 900 })
+        let personalImage = null;
+        if (req.files.personalImage) {
+            const personalImageBuffer = await sharp(req.files.personalImage[0].buffer)
+                .resize({ height: 900 }) // Resizing for better quality
                 .jpeg({ quality: 80 })
                 .toBuffer();
-            artworkImageBase64 = `data:image/jpeg;base64,${artworkImage.toString('base64')}`;
-        } catch (err) {
-            console.error('Error processing artwork image:', err);
-            return res.status(500).json({ success: false, message: 'Error processing artwork image.' });
+            personalImage = `data:image/jpeg;base64,${personalImageBuffer.toString('base64')}`;
         }
 
-        // Process personal image (if provided)
-        let personalImageBase64 = null;
-        if (req.files['personalImage']) {
-            try {
-                const personalImage = await sharp(req.files['personalImage'][0].buffer)
-                    .resize({ height: 900 })
-                    .jpeg({ quality: 80 })
-                    .toBuffer();
-                personalImageBase64 = `data:image/jpeg;base64,${personalImage.toString('base64')}`;
-            } catch (err) {
-                console.error('Error processing personal image:', err);
-                return res.status(500).json({ success: false, message: 'Error processing personal image.' });
-            }
-        }
-
-        // Insert the record into the database
-        db.run(
-            `INSERT INTO records (name, country, image, personal_image, website, description) VALUES (?, ?, ?, ?, ?, ?)`,
-            [name, country, artworkImageBase64, personalImageBase64, website, description],
-            function (err) {
-                if (err) {
-                    console.error('Database error:', err);
-                    return res.status(500).json({ success: false, message: 'Database error.' });
-                }
-                res.json({ success: true, id: this.lastID });
-            }
+        // Insert into database
+        const result = await pool.query(
+            `INSERT INTO submissions (name, country, artwork_image, personal_image, website, description)
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+            [name, country, artworkImage, personalImage, website, description]
         );
+
+        res.json({ success: true, id: result.rows[0].id });
     } catch (err) {
-        console.error('Unexpected server error:', err);
-        res.status(500).json({ success: false, message: 'Unexpected server error.' });
+        console.error('Error processing submission:', err.message);
+        res.status(500).json({ success: false, message: 'Internal server error' });
     }
 });
 
-app.get('/records', (req, res) => {
-    const { sort = 'newest', country = '' } = req.query;
+// API Route to Fetch Submissions with Filtering and Sorting
+app.get('/records', async (req, res) => {
+    const { filterCountry, sort } = req.query;
 
-    let query = `SELECT * FROM records`;
-    const params = [];
+    let query = 'SELECT * FROM submissions';
+    const queryParams = [];
 
-    if (country) {
-        query += ` WHERE country LIKE ?`;
-        params.push(`%${country}%`);
+    if (filterCountry) {
+        query += ' WHERE country = $1';
+        queryParams.push(filterCountry);
     }
 
-    query += sort === 'newest'
-        ? ' ORDER BY created_at DESC'
-        : sort === 'oldest'
-        ? ' ORDER BY created_at ASC'
-        : sort === 'az'
-        ? ' ORDER BY name COLLATE NOCASE ASC'
-        : sort === 'za'
-        ? ' ORDER BY name COLLATE NOCASE DESC'
-        : '';
+    if (sort === 'oldest') {
+        query += ' ORDER BY created_at ASC';
+    } else if (sort === 'newest') {
+        query += ' ORDER BY created_at DESC';
+    } else if (sort === 'name') {
+        query += ' ORDER BY name';
+    }
 
-    db.all(query, params, (err, rows) => {
-        if (err) return res.status(500).json({ success: false, message: 'Database query error' });
-        res.json(rows);
-    });
+    try {
+        const result = await pool.query(query, queryParams);
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error fetching records:', err.message);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
 });
 
-// Start the server
+// Start the Server
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => {
+    console.log(`✅ Server running on http://localhost:${PORT}`);
+});
 
